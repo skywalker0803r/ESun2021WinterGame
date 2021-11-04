@@ -21,9 +21,9 @@ def set_seed(seed = 42):
     os.environ['PYTHONHASHSEED'] = str(seed)
     return seed
 seed = set_seed(seed = 42)
-debug_mode = True
+debug_mode = False
 start_dt = int(24-12)
-association_rules_n = 100
+association_rules_n = 5290
 官方指認欄位 = ['2','6','10','12','13','15','18','19','21','22','25','26','36','37','39','48']
 train_path = '../data/2021玉山人工智慧公開挑戰賽冬季賽訓練資料集.feather'
 test_path = '../data/需預測的顧客名單及提交檔案範例.feather'
@@ -37,7 +37,13 @@ log.info('crate shop_tag_mapping...')
 data = []
 for chid in tqdm(df.sample(association_rules_n,random_state=seed)['chid'].values):
     data.append(df.loc[(df.chid==chid)&(df.dt>=start_dt),'shop_tag'].value_counts().index.tolist())
-association_rules = apriori(data, min_support=0.1, min_confidence=0.1, min_lift=1.1,max_length=2) 
+association_rules = apriori(
+    data, 
+    min_support=0.1, 
+    min_confidence=0.1, 
+    min_lift=1.1,
+    max_length=2,
+    ) 
 association_results = list(association_rules)
 mapping = {}
 for key in 官方指認欄位:
