@@ -70,24 +70,18 @@ def predict_function(chid): # 預測函數
                 answer.append(shop_tag) # 加入shop_tag至answer
         return answer
 
-
-log.info('start predict...')
-answer_list = submit['chid'].progress_apply(predict_function)
-answer_list = answer_list.to_frame()['chid']
-
-log.info('create submit...')
-
 if debug_mode == True:
     submit = test_data.copy().head(42)
 if debug_mode == False:
     submit = test_data.copy()
 
+log.info('start predict...')
+answer_list = submit['chid'].progress_apply(predict_function)
+answer_list = answer_list.to_frame()['chid']
 for i in [0,1,2]:
     submit[f'top{i+1}'] = answer_list.apply(lambda x:x[i]).values
-
 save_path = f'submit_most_count_method_knn_{str(int(time.time()))}.csv'
 submit.to_csv(save_path,index=False)
-
-log.info(f'submission.shape:{submission.shape}')
+log.info(f'submission.shape:{submit.shape}')
 log.info(f'submission.path:{save_path}')
 log.info('ALL DONE!')
