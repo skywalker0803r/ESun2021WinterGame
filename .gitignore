@@ -1,4 +1,8 @@
 # data
+__pycache__
 /data
 /model
 /notebook/catboost_info
+*.csv
+*.feather
+*.pyc
