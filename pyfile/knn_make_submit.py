@@ -8,6 +8,12 @@ import logging
 import coloredlogs
 import time
 import gc
+import sys
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("name", help="1.exia 2.dynames 3.kyrios 4.virtue",type=str)
+args = parser.parse_args()
+
 gc.collect()
 tqdm.pandas()
 log = logging.getLogger(__name__)
@@ -33,6 +39,21 @@ df_groupby_chid_preprocessed = pd.read_feather('../data/df_groupby_chid_preproce
 df = pd.read_feather('../data/2021玉山人工智慧公開挑戰賽冬季賽訓練資料集.feather')
 df = df.loc[df.dt >= start_dt] # 取近期資料
 test_data = pd.read_feather('../data/需預測的顧客名單及提交檔案範例.feather')
+
+# 因為要平行化所以切分資料成四份
+sp1,sp2,sp3 = int(len(test_data)/4),int(len(test_data)/4)*2,int(len(test_data)/4)*3
+if args.name == 'exia':
+    test_data = test_data.iloc[0:sp1,:]
+elif args.name == 'dynames':
+    test_data = test_data.iloc[sp1:sp2,:]
+elif args.name == 'kyrios':
+    test_data = test_data.iloc[sp2:sp3,:]
+elif args.name == 'virtue':
+    test_data = test_data.iloc[sp3:,:]
+else:
+    log.info('args.name error!!!')
+    sys.exit()
+log.info(f'args.name:{args.name}')
 
 # 函數
 def chid2answer(chid): #chid到answer的映射
@@ -66,7 +87,7 @@ def predict_function(chid): # 預測函數
                 answer.append(shop_tag) # 加入shop_tag至answer
                 answer_list.remove(shop_tag) # 用過的shop_tag記得移除
             else:
-                shop_tag = np.random.choice(官方指認欄位)
+                shop_tag = np.random.choice(list(set(官方指認欄位)-set(answer))) #已經有的就不要選
                 answer.append(shop_tag) # 加入shop_tag至answer
         return answer
 
@@ -80,7 +101,7 @@ answer_list = submit['chid'].progress_apply(predict_function)
 answer_list = answer_list.to_frame()['chid']
 for i in [0,1,2]:
     submit[f'top{i+1}'] = answer_list.apply(lambda x:x[i]).values
-save_path = f'submit_most_count_method_knn_{str(int(time.time()))}.csv'
+save_path = f'submit_most_count_method_knn_{args.name}_{str(int(time.time()))}.csv'
 submit.to_csv(save_path,index=False)
 log.info(f'submission.shape:{submit.shape}')
 log.info(f'submission.path:{save_path}')
