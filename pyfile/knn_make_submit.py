@@ -87,7 +87,8 @@ def predict_function(chid): # 預測函數
                 answer.append(shop_tag) # 加入shop_tag至answer
                 answer_list.remove(shop_tag) # 用過的shop_tag記得移除
             else:
-                shop_tag = np.random.choice(list(set(官方指認欄位)-set(answer))) #已經有的就不要選
+                #shop_tag = np.random.choice(list(set(官方指認欄位)-set(answer))) #已經有的就不要選
+                shop_tag = np.random.choice(官方指認欄位) #後來發現其實這樣反而分數比較高
                 answer.append(shop_tag) # 加入shop_tag至answer
         return answer
 
