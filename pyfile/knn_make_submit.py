@@ -71,6 +71,7 @@ def predict_function(chid): # 預測函數
     answer = chid2answer(chid) # 根據這個chid做預測
     if len(answer) == 3: # 如果成功找到三個直接return
         assert type(answer) == type([]) #記得確認是list型別
+        assert len(np.unique(answer)) == 3 #確認三個shop_tag不重複
         return answer 
     else:
         remain = 3-len(answer) # 否則計算離三個答案還缺多少
@@ -91,6 +92,7 @@ def predict_function(chid): # 預測函數
                 answer.append(shop_tag) # 加入shop_tag至answer
                 answer_list = list(filter(lambda a: a not in answer, answer_list)) # 記得把answer有的shop_tag從answer_list做刪除
         assert type(answer) == type([]) #確認是list型別
+        assert len(np.unique(answer)) == 3 #確認三個shop_tag不重複
         return answer # 返回答案(類型list)
 
 if debug_mode == True:
