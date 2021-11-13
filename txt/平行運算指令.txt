@@ -1,0 +1,4 @@
+nohup python knn_make_submit.py 'exia' >exia 2>&1 &
+nohup python knn_make_submit.py 'dynames' >dynames 2>&1 &
+nohup python knn_make_submit.py 'kyrios' >kyrios 2>&1 &
+nohup python knn_make_submit.py 'virtue' >virtue 2>&1 &
