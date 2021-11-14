@@ -35,10 +35,10 @@ df = df.loc[df.dt>=args.start_dt,:] #取大於start_dt的資料
 
 # FILL MISS VALUE
 log.info('start fill miss values')
-mean_fill_col = ['slam'] # 數值型用均值補值
+mean_fill_col = ['slam'] # 數值型用中位數補值(避免均值被離群值拉偏)
 cat_fill_col = ['gender_code','age','trdtp','educd','masts','naty','poscd','cuorg'] # 類別型用一個-999補值
 for i in tqdm(mean_fill_col):
-    df[i] = df[i].fillna(df[i].mean())
+    df[i] = df[i].fillna(df[i].median())
 for i in tqdm(cat_fill_col):
     df[i] = df[i].fillna(-999)
 assert df.isnull().sum().sum() == 0
@@ -47,7 +47,7 @@ log.info("start create_grouby_chid_df...")
 # 以下根據chid做groupby操作,並且因應各種不同類型的欄位作客製化統計運算(沿時間維度取mean之類的)
 def create_groupby_chid_df(df):
     
-    # 1 groupby('chid')根據時間維度取最後一筆
+    # 1 groupby('chid')根據時間維度取最後一筆(最近期資料)
     final_col = ['age','primary_card','trdtp','educd','gender_code','masts','poscd','naty','cuorg'] 
     var1 = df.groupby('chid')[final_col].agg(lambda x:x.values[-1]) # 最後一筆 
     
@@ -72,8 +72,6 @@ def create_groupby_chid_df(df):
     # 1 2 3 4 5 concat 起來
     df_groupby_chid = pd.concat([var1,var2,var3,var4,var5],axis=1).reset_index()
     
-    print(set(df.columns) - set(df_groupby_chid.columns))
-
     return df_groupby_chid
 
 df_groupby_chid = create_groupby_chid_df(df)
