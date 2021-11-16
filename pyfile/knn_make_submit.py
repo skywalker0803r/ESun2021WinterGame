@@ -60,7 +60,7 @@ log.info(f'args.name:{args.name}')
 
 # 一些函數都放在這裡
 def chid2answer(chid): # 主要只做chid到answer的映射
-    a = df.loc[df['chid']==chid,'shop_tag'].value_counts().to_frame() #計算這個chid最常消費的shop_tag
+    a = df.loc[df.chid==chid,['shop_tag','txn_amt']].groupby('shop_tag').agg('sum').sort_values(by='txn_amt',ascending=False)
     a['在指認欄位'] = False
     if len(list(set(a.index)&set(官方指認欄位))) != 0: #如果shop_tag跟官方指定欄位的shop_tag有交集
         a.loc[list(set(a.index)&set(官方指認欄位)),'在指認欄位'] = True #有交集的部份做個記號
