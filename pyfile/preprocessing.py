@@ -20,9 +20,9 @@ class dotdict(dict):
         return self[name]
 
 args = dotdict({
-    'pca_n':0.95,
-    'knn_k':5,
-    'knn_leaf_size':30,
+    'pca_n':84,
+    'knn_k':42,
+    'knn_leaf_size':300,
     'knn_p':2,
     'start_dt':12,
 })
