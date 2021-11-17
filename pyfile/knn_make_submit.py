@@ -59,10 +59,10 @@ else:
 log.info(f'args.name:{args.name}')
 
 # 一些函數都放在這裡
-def chid2answer(chid,method='median'):
+def chid2answer(chid,method='value_counts'):
     if method in ['sum','mean','median']:
         a = df.loc[df.chid==chid,['shop_tag','txn_amt']].groupby('shop_tag').agg(method).sort_values(by='txn_amt',ascending=False)
-    elif method in 'value_counts':
+    elif method in ['value_counts']:
         a = df.loc[df.chid==chid,'shop_tag'].value_counts().to_frame()
     else:
         raise 'error'
