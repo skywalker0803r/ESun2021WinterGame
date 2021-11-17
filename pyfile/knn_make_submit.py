@@ -59,13 +59,17 @@ else:
 log.info(f'args.name:{args.name}')
 
 # 一些函數都放在這裡
-def chid2answer(chid): # 主要只做chid到answer的映射
-    a = df.loc[df.chid==chid,['shop_tag','txn_amt']].groupby('shop_tag').agg('sum').sort_values(by='txn_amt',ascending=False)
+def chid2answer(chid,method='median'):
+    if method in ['sum','mean','median']:
+        a = df.loc[df.chid==chid,['shop_tag','txn_amt']].groupby('shop_tag').agg(method).sort_values(by='txn_amt',ascending=False)
+    elif method in 'value_counts':
+        a = df.loc[df.chid==chid,'shop_tag'].value_counts().to_frame()
+    else:
+        raise 'error'
     a['在指認欄位'] = False
-    if len(list(set(a.index)&set(官方指認欄位))) != 0: #如果shop_tag跟官方指定欄位的shop_tag有交集
-        a.loc[list(set(a.index)&set(官方指認欄位)),'在指認欄位'] = True #有交集的部份做個記號
-    answer = a[a['在指認欄位']==True].index.tolist()[:3] # 取有交集的部份"前三名"返回
-    return answer
+    a.loc[list(set(a.index)&set(官方指認欄位)),'在指認欄位'] = True #有交集的部份做個記號
+    answer = a[a['在指認欄位']==True].head(3)
+    return answer.index.tolist()
 
 def predict_function(chid): # 預測函數
     answer = chid2answer(chid) # 根據這個chid做預測
