@@ -23,6 +23,14 @@ coloredlogs.install(level='INFO')
 parser = argparse.ArgumentParser()
 parser.add_argument("name", help="1.exia 2.dynames 3.kyrios 4.virtue",type=str)
 args = parser.parse_args()
+
+class dotdict(dict):
+    def __getattr__(self, name):
+        return self[name]
+dotargs = dotdict({
+    'knn_k':9,
+})
+
 def set_seed(seed = 42):
     np.random.seed(seed)
     random_state = np.random.RandomState(seed)
@@ -82,7 +90,7 @@ def predict_function(chid):
         idx = df_groupby_chid_preprocessed.loc[df_groupby_chid_preprocessed.chid==chid].index[0] #根據chid取得idx 
         distances, indices = nbrs.kneighbors(X_pca[[idx]]) # 根據idx取得PCA特徵
         chid_list = df_groupby_chid_preprocessed.loc[indices[0][-(nbrs.n_neighbors-1):]]['chid'].values.tolist() # 根據PCA特徵找到鄰居
-        for nb_chid in chid_list: #對K個鄰居做遍歷
+        for nb_chid in chid_list[:dotargs.knn_k]: #對K個鄰居做遍歷
             nb_answer = chid2answer(nb_chid) # 鄰居的答案
             answer.extend(list(filter(lambda a: a not in answer, nb_answer))) #用鄰居答案對answer做擴充
             if len(answer) >= 3: # 如果補齊三個 return
