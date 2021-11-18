@@ -20,10 +20,10 @@ class dotdict(dict):
         return self[name]
 
 args = dotdict({
-    'pca_n':84,
+    'pca_n':64,
     'knn_k':42,
-    'knn_leaf_size':300,
-    'knn_p':2,
+    'knn_leaf_size':42,
+    'knn_p':1,
     'start_dt':12,
 })
 log.info(f'setting args is :{args}')
@@ -45,33 +45,39 @@ assert df.isnull().sum().sum() == 0
 
 log.info("start create_grouby_chid_df...")
 # 以下根據chid做groupby操作,並且因應各種不同類型的欄位作客製化統計運算(沿時間維度取mean之類的)
-def create_groupby_chid_df(df):
-    
-    # 1 groupby('chid')根據時間維度取最後一筆(最近期資料)
-    final_col = ['age','primary_card','trdtp','educd','gender_code','masts','poscd','naty','cuorg'] 
-    var1 = df.groupby('chid')[final_col].agg(lambda x:x.values[-1]) # 最後一筆 
-    
-    # 2 groupby('chid')根據時間維度算平均百分比
-    mean_col = df.columns[df.columns.str.contains('pct')]
-    var2 = df.groupby('chid')[mean_col].agg('mean')
-    
-    # 3 groupby('chid')根據時間維度算norm_cnt(月平均消費次數(cnt取mean),再接一個normalize操作)
-    card_cnt_col = df.columns[df.columns.str.contains('card')&df.columns.str.contains('cnt')]
-    var3 = df.groupby('chid')[card_cnt_col].agg('mean')
-    var3.loc[:,:] = normalize(var3)
-    
-    # 4 groupby('chid')根據時間維度算norm_cnt(月平均消費次數(cnt取mean),再接一個normalize操作)
-    domestic_overseas_col = df.columns[(df.columns.str.contains('domestic')|df.columns.str.contains('overseas'))&(df.columns.str.contains('cnt'))]
-    var4 = df.groupby('chid')[domestic_overseas_col].agg('mean')
-    var4.loc[:,:] = normalize(var4)
+def create_groupby_chid_df(df,mean_or_median='mean',l1_or_l2='l1'):
+    def personal_information_process(col):
+        return df.groupby('chid')[col].agg(lambda x:x.values[-1]) 
 
-    # 5 groupby('chid')根據時間維度算平均值(slam(正卡信用額度平均值),txn_amt(消費金額平均值),txn_cnt(消費次數平均值))
-    other_mean_col = ['slam','txn_amt','txn_cnt']
-    var5 = df.groupby('chid')[other_mean_col].agg('mean')
-
-    # 1 2 3 4 5 concat 起來
-    df_groupby_chid = pd.concat([var1,var2,var3,var4,var5],axis=1).reset_index()
+    def pct_process(col):
+        return df.groupby('chid')[col].agg(mean_or_median)
     
+    def cnt_process(col):
+        var = df.groupby('chid')[col].agg(mean_or_median)
+        var.loc[:,:] = normalize(var,norm=l1_or_l2)
+        return var
+
+    個人資料欄位 = ['age','primary_card','trdtp','educd','gender_code','masts','poscd','naty','cuorg']
+    
+    # 百分比
+    國內外百分比欄位 = df.columns[(df.columns.str.contains('domestic')|df.columns.str.contains('overseas'))&df.columns.str.contains('pct')]#pct
+    卡片百分比欄位 = df.columns[df.columns.str.contains('card')&df.columns.str.contains('pct')]#pct
+
+    # 次數
+    國內外次數欄位 = df.columns[(df.columns.str.contains('domestic')|df.columns.str.contains('overseas'))&df.columns.str.contains('cnt')]#cnt
+    卡片次數欄位 = df.columns[df.columns.str.contains('card')&df.columns.str.contains('cnt')]#cnt
+
+    # 其他
+    其他欄位 = ['slam','txn_amt','txn_cnt']
+    
+    var = personal_information_process(個人資料欄位)
+    for pct_col in [國內外百分比欄位,卡片百分比欄位]:
+        var =  pd.concat([var,pct_process(pct_col)],axis=1)
+    for cnt_col in [國內外次數欄位,卡片次數欄位]:
+        var =  pd.concat([var,cnt_process(cnt_col)],axis=1)
+    df_groupby_chid = pd.concat([var,pct_process(其他欄位)],axis=1).reset_index()
+    
+    assert set(df.columns) - set(df_groupby_chid.columns) == {'shop_tag', 'dt'} # 確保df_groupby_chid沒有shop_tag和dt
     return df_groupby_chid
 
 df_groupby_chid = create_groupby_chid_df(df)
@@ -84,26 +90,28 @@ import warnings
 warnings.filterwarnings('ignore')
 
 def preprocess_for_knn(df_groupby_chid):
-    # 對類別欄位做one hot encoding
+    '''
+    # 1.對類別欄位做one hot encoding(保留one_hot欄位刪除原始欄位)
+    # 2.做scale轉換
+    '''
     categorical_df = pd.DataFrame()
     categorical_features = ['masts','educd','trdtp','naty','poscd','cuorg','gender_code','age','primary_card']
     for c_name in categorical_features:
         df_groupby_chid[c_name] = pd.to_numeric(df_groupby_chid[c_name])
-    for c_name in categorical_features:
         one_hot = pd.get_dummies(df_groupby_chid[c_name])
         one_hot.columns = [ c_name + '_' + str(i) for i in one_hot.columns]
-        if len(categorical_df)==0:
+        if len(categorical_df) == 0:
             categorical_df = one_hot
         else:
             categorical_df = pd.concat([categorical_df,one_hot],axis=1)
-    df_groupby_chid = df_groupby_chid.drop(categorical_features,axis=1) # 刪掉原始類別欄位
-    df_groupby_chid = pd.concat([df_groupby_chid,categorical_df],axis=1) # 加入one hot版本類別欄位
     
-    # 做標準化轉換
-    scale_col = set(df_groupby_chid.columns) - set(['chid'])
-    scale_col = list(scale_col)
-    df_groupby_chid[scale_col] = scale(df_groupby_chid[scale_col])
+    # 刪掉原始類別欄位,加入one_hot版本類別欄位        
+    df_groupby_chid = df_groupby_chid.drop(categorical_features,axis=1)
+    df_groupby_chid = pd.concat([df_groupby_chid,categorical_df],axis=1)
     
+    # 做標準化轉換(除了chid以外)
+    scale_col = list(set(df_groupby_chid.columns) - set(['chid']))
+    df_groupby_chid[scale_col] = scale(df_groupby_chid[scale_col],axis=0)
     return df_groupby_chid
 
 df_groupby_chid_preprocessed = preprocess_for_knn(df_groupby_chid)
