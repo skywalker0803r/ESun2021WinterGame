@@ -20,7 +20,7 @@ class dotdict(dict):
         return self[name]
 
 args = dotdict({
-    'pca_n':64,
+    'pca_n':100,
     'knn_k':42,
     'knn_leaf_size':42,
     'knn_p':1,
