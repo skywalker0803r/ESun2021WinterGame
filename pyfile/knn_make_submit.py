@@ -28,7 +28,7 @@ class dotdict(dict):
     def __getattr__(self, name):
         return self[name]
 dotargs = dotdict({
-    'knn_k':42,
+    'knn_k':10,
     'predict_method':'most_common',
     'seed':43,
 })
@@ -114,6 +114,7 @@ def predict_function_most_common(chid): # 預測函數
         idx = df_groupby_chid_preprocessed.loc[df_groupby_chid_preprocessed.chid==chid].index[0] # 根據chid找到該筆樣本的"idx"
         distances, indices = nbrs.kneighbors(X_pca[[idx]]) # 根據該樣本的"idx"找到該筆樣本的"PCA特徵"進而取得"鄰居的indices"(其中距離近的indices自動排前面)
         chid_list = df_groupby_chid_preprocessed.loc[indices[0][-(nbrs.n_neighbors-1):]]['chid'].values.tolist() # 根據"鄰居的indices"取得"chid_list(鄰居們)"
+        chid_list = chid_list[:dotargs.knn_k]
         answer_list = [chid2answer(chid) for chid in chid_list] # 根據"chid_list"取得"answer_list"
         answer_list = list(itertools.chain(*answer_list)) # 將answer_list做"一維展開"
         answer_list = list(filter(lambda a: a not in answer, answer_list)) # 如果該shop_tag在"answer"裡面已經有了則從answer_list"去除"
