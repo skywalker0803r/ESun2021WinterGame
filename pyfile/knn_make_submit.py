@@ -28,9 +28,11 @@ class dotdict(dict):
     def __getattr__(self, name):
         return self[name]
 dotargs = dotdict({
-    'knn_k':9,
+    'knn_k':42,
     'predict_method':'most_common',
+    'seed':42,
 })
+log.info(f'setting args is :{dotargs}')
 
 def set_seed(seed = 42):
     np.random.seed(seed)
@@ -38,8 +40,8 @@ def set_seed(seed = 42):
     random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
     return seed
-seed = set_seed(seed = 42)
-debug_mode = True
+seed = set_seed(seed = dotargs.seed)
+debug_mode = False
 start_dt = 12
 log.info(f'debug_mode:{debug_mode}')
 
