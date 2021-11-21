@@ -30,11 +30,11 @@ class dotdict(dict):
 dotargs = dotdict({
     'knn_k':42,
     'predict_method':'most_common',
-    'seed':42,
+    'seed':43,
 })
 log.info(f'setting args is :{dotargs}')
 
-def set_seed(seed = 42):
+def set_seed(seed):
     np.random.seed(seed)
     random_state = np.random.RandomState(seed)
     random.seed(seed)
@@ -136,9 +136,9 @@ if debug_mode == True:
 if debug_mode == False:
     submit = test_data.copy() # 認真模式用全部
 
-if args.predict_method == 'most_common':
+if dotargs.predict_method == 'most_common':
     predict_function = predict_function_most_common
-if args.predict_method == 'distance_first':
+if dotargs.predict_method == 'distance_first':
     predict_function = predict_function_distance_first
 
 log.info('start predict...')
