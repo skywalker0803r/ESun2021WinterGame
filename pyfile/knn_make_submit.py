@@ -29,6 +29,7 @@ class dotdict(dict):
         return self[name]
 dotargs = dotdict({
     'knn_k':9,
+    'predict_method':'most_common',
 })
 
 def set_seed(seed = 42):
@@ -82,7 +83,7 @@ def chid2answer(chid,method='value_counts'):
     else:
         return []
 
-def predict_function(chid):
+def predict_function_distance_first(chid):
     answer = chid2answer(chid) # 根據這個chid找答案但是不一定可以找到3個
     if len(answer) == 3:
         return answer
@@ -100,10 +101,43 @@ def predict_function(chid):
             answer.append(np.random.choice(list(set(官方指認欄位)-set(answer))))# 從官方指認欄位隨便補
         return answer
 
+def predict_function_most_common(chid): # 預測函數
+    answer = chid2answer(chid) # 根據這個chid做預測
+    if len(answer) == 3: # 如果成功找到三個直接return
+        assert type(answer) == type([]) #記得確認是list型別
+        assert len(np.unique(answer)) == 3 #確認三個shop_tag不重複
+        return answer 
+    else:
+        remain = 3-len(answer) # 否則計算離三個答案還缺多少
+        idx = df_groupby_chid_preprocessed.loc[df_groupby_chid_preprocessed.chid==chid].index[0] # 根據chid找到該筆樣本的"idx"
+        distances, indices = nbrs.kneighbors(X_pca[[idx]]) # 根據該樣本的"idx"找到該筆樣本的"PCA特徵"進而取得"鄰居的indices"(其中距離近的indices自動排前面)
+        chid_list = df_groupby_chid_preprocessed.loc[indices[0][-(nbrs.n_neighbors-1):]]['chid'].values.tolist() # 根據"鄰居的indices"取得"chid_list(鄰居們)"
+        answer_list = [chid2answer(chid) for chid in chid_list] # 根據"chid_list"取得"answer_list"
+        answer_list = list(itertools.chain(*answer_list)) # 將answer_list做"一維展開"
+        answer_list = list(filter(lambda a: a not in answer, answer_list)) # 如果該shop_tag在"answer"裡面已經有了則從answer_list"去除"
+        for _ in range(remain): # 遍歷剩餘數量做補上的動作,直到補滿3個答案
+            if len(answer_list) != 0: #如果answer_list不等於0
+                shop_tag = Counter(answer_list).most_common()[0][0] # 從answer_list選most_common的shop_tag(出現頻率比較多可能是正確答案)
+                answer.append(shop_tag) # 加入該shop_tag至answer
+                answer_list = list(filter(lambda a: a not in answer, answer_list)) # 記得把answer有的shop_tag從answer_list做刪除
+            else: #如果answer_list等於0
+                answer_list = 官方指認欄位 # 既然answer_list等於0估解將官方指認欄位當作answer_list
+                shop_tag = np.random.choice(list(set(answer_list)-set(answer))) # 隨機選但是answer裡面已經有的就不要選,官方規定的
+                answer.append(shop_tag) # 加入shop_tag至answer
+                answer_list = list(filter(lambda a: a not in answer, answer_list)) # 記得把answer有的shop_tag從answer_list做刪除
+        assert type(answer) == type([]) #確認是list型別
+        assert len(np.unique(answer)) == 3 #確認三個shop_tag不重複
+        return answer # 返回答案(類型list)
+
 if debug_mode == True:
     submit = test_data.copy().head(42) # debug用少數樣本測試就好
 if debug_mode == False:
     submit = test_data.copy() # 認真模式用全部
+
+if args.predict_method == 'most_common':
+    predict_function = predict_function_most_common
+if args.predict_method == 'distance_first':
+    predict_function = predict_function_distance_first
 
 log.info('start predict...')
 answer_list = submit['chid'].progress_apply(predict_function)
