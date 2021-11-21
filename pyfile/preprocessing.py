@@ -19,11 +19,12 @@ class dotdict(dict):
     def __getattr__(self, name):
         return self[name]
 
+# LB分數0.6902的參數
 args = dotdict({
-    'pca_n':100,
+    'pca_n':84,
     'knn_k':42,
-    'knn_leaf_size':42,
-    'knn_p':1,
+    'knn_leaf_size':300,
+    'knn_p':2,
     'start_dt':12,
 })
 log.info(f'setting args is :{args}')
@@ -35,17 +36,17 @@ df = df.loc[df.dt>=args.start_dt,:] #取大於start_dt的資料
 
 # FILL MISS VALUE
 log.info('start fill miss values')
-mean_fill_col = ['slam'] # 數值型用中位數補值(避免均值被離群值拉偏)
+mean_fill_col = ['slam'] # 數值型用均值補值
 cat_fill_col = ['gender_code','age','trdtp','educd','masts','naty','poscd','cuorg'] # 類別型用一個-999補值
 for i in tqdm(mean_fill_col):
-    df[i] = df[i].fillna(df[i].median())
+    df[i] = df[i].fillna(df[i].mean())
 for i in tqdm(cat_fill_col):
     df[i] = df[i].fillna(-999)
 assert df.isnull().sum().sum() == 0
 
 log.info("start create_grouby_chid_df...")
 # 以下根據chid做groupby操作,並且因應各種不同類型的欄位作客製化統計運算(沿時間維度取mean之類的)
-def create_groupby_chid_df(df,mean_or_median='mean',l1_or_l2='l1'):
+def create_groupby_chid_df(df,mean_or_median='mean',l1_or_l2='l2'):
     def personal_information_process(col):
         return df.groupby('chid')[col].agg(lambda x:x.values[-1]) 
 
@@ -57,25 +58,27 @@ def create_groupby_chid_df(df,mean_or_median='mean',l1_or_l2='l1'):
         var.loc[:,:] = normalize(var,norm=l1_or_l2)
         return var
 
+    # 1.個人資料欄位
     個人資料欄位 = ['age','primary_card','trdtp','educd','gender_code','masts','poscd','naty','cuorg']
     
-    # 百分比
-    國內外百分比欄位 = df.columns[(df.columns.str.contains('domestic')|df.columns.str.contains('overseas'))&df.columns.str.contains('pct')]#pct
-    卡片百分比欄位 = df.columns[df.columns.str.contains('card')&df.columns.str.contains('pct')]#pct
+    # 2.百分比欄位
+    百分比欄位 = df.columns[df.columns.str.contains('pct')]
 
-    # 次數
-    國內外次數欄位 = df.columns[(df.columns.str.contains('domestic')|df.columns.str.contains('overseas'))&df.columns.str.contains('cnt')]#cnt
-    卡片次數欄位 = df.columns[df.columns.str.contains('card')&df.columns.str.contains('cnt')]#cnt
+    # 3.卡片次數欄位
+    卡片次數欄位 = df.columns[df.columns.str.contains('card')&df.columns.str.contains('cnt')]
 
-    # 其他
+    # 4.國內外次數欄位
+    國內外次數欄位 = df.columns[(df.columns.str.contains('domestic')|df.columns.str.contains('overseas'))&df.columns.str.contains('cnt')]
+
+    # 其他欄位
     其他欄位 = ['slam','txn_amt','txn_cnt']
     
-    var = personal_information_process(個人資料欄位)
-    for pct_col in [國內外百分比欄位,卡片百分比欄位]:
+    var = personal_information_process(個人資料欄位) # 1個人資料欄位
+    for pct_col in [百分比欄位]: # 2百分比欄位
         var =  pd.concat([var,pct_process(pct_col)],axis=1)
-    for cnt_col in [國內外次數欄位,卡片次數欄位]:
+    for cnt_col in [卡片次數欄位,國內外次數欄位]: # 3卡片次數欄位,4國內外次數欄位
         var =  pd.concat([var,cnt_process(cnt_col)],axis=1)
-    df_groupby_chid = pd.concat([var,pct_process(其他欄位)],axis=1).reset_index()
+    df_groupby_chid = pd.concat([var,pct_process(其他欄位)],axis=1).reset_index() # 5其他欄位
     
     assert set(df.columns) - set(df_groupby_chid.columns) == {'shop_tag', 'dt'} # 確保df_groupby_chid沒有shop_tag和dt
     return df_groupby_chid
@@ -100,18 +103,18 @@ def preprocess_for_knn(df_groupby_chid):
         df_groupby_chid[c_name] = pd.to_numeric(df_groupby_chid[c_name])
         one_hot = pd.get_dummies(df_groupby_chid[c_name])
         one_hot.columns = [ c_name + '_' + str(i) for i in one_hot.columns]
-        if len(categorical_df) == 0:
+        if len(categorical_df)==0:
             categorical_df = one_hot
         else:
-            categorical_df = pd.concat([categorical_df,one_hot],axis=1)
+            categorical_df = pd.concat([categorical_df,one_hot],axis=1)     
+    df_groupby_chid = df_groupby_chid.drop(categorical_features,axis=1) # 刪掉原始類別欄位
+    df_groupby_chid = pd.concat([df_groupby_chid,categorical_df],axis=1) # 加入one hot版本類別欄位
     
-    # 刪掉原始類別欄位,加入one_hot版本類別欄位        
-    df_groupby_chid = df_groupby_chid.drop(categorical_features,axis=1)
-    df_groupby_chid = pd.concat([df_groupby_chid,categorical_df],axis=1)
+    # 做標準化轉換
+    scale_col = set(df_groupby_chid.columns) - set(['chid'])
+    scale_col = list(scale_col)
+    df_groupby_chid[scale_col] = scale(df_groupby_chid[scale_col])
     
-    # 做標準化轉換(除了chid以外)
-    scale_col = list(set(df_groupby_chid.columns) - set(['chid']))
-    df_groupby_chid[scale_col] = scale(df_groupby_chid[scale_col],axis=0)
     return df_groupby_chid
 
 df_groupby_chid_preprocessed = preprocess_for_knn(df_groupby_chid)
