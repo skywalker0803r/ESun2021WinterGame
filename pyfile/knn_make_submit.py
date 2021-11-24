@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 coloredlogs.install(level='INFO')
 
 # 是否啟用debug模式
-debug_mode = True
+debug_mode = False
 log.info(f'debug_mode:{debug_mode}')
 
 # 超參數設定
@@ -53,10 +53,6 @@ df_groupby_chid_preprocessed = pd.read_feather('../data/df_groupby_chid_preproce
 df = pd.read_feather('../data/2021玉山人工智慧公開挑戰賽冬季賽訓練資料集.feather')#訓練資料
 df = df.loc[df.dt >= dotargs.start_dt] # 取近期資料(太久的資料可能參考價值不高)
 test_data = pd.read_feather('../data/需預測的顧客名單及提交檔案範例.feather')#用來製作submit的資料
-if debug_mode == True:
-    submit = test_data.copy().sample(42) # debug用少數樣本測試就好
-if debug_mode == False:
-    submit = test_data.copy() # 認真模式用全部
 
 # 因為要平行化所以切分資料成四份"1.exia 2.dynames 3.kyrios 4.virtue"
 sp1,sp2,sp3 = int(len(test_data)/4),int(len(test_data)/4)*2,int(len(test_data)/4)*3
@@ -110,6 +106,10 @@ def chid2answer(chid_list,k=2,max_k=dotargs.knn_k):
             return chid2answer(chid_list,k=k+1)
 
 # 開始執行預測
+if debug_mode == True:
+    submit = test_data.copy().sample(42) # debug用少數樣本測試就好
+if debug_mode == False:
+    submit = test_data.copy() # 認真模式用全部
 log.info('start predict...')
 answer_list = submit['chid'].progress_apply(lambda chid:chid2answer([chid])).to_frame()['chid']
 # 用預測完的answer_list對submit的top1,top2,top3做補上的動作
