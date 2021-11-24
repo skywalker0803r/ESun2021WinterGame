@@ -13,27 +13,29 @@ import argparse
 import itertools
 from collections import Counter
 
-# 顯示設定
+# 終端機顯示設定
 gc.collect()
 tqdm.pandas()
 log = logging.getLogger(__name__)
 coloredlogs.install(level='INFO')
 
+# 是否啟用debug模式
+debug_mode = True
+log.info(f'debug_mode:{debug_mode}')
+
 # 超參數設定
 parser = argparse.ArgumentParser()
 parser.add_argument("name", help="1.exia 2.dynames 3.kyrios 4.virtue",type=str)
 args = parser.parse_args()
-
 class dotdict(dict):
     def __getattr__(self, name):
         return self[name]
 dotargs = dotdict({
-    'knn_k':10,
+    'knn_k':42,
     'predict_method':'most_common',
-    'seed':43,
+    'start_dt':12,
+    'seed':42,
 })
-log.info(f'setting args is :{dotargs}')
-
 def set_seed(seed):
     np.random.seed(seed)
     random_state = np.random.RandomState(seed)
@@ -41,18 +43,20 @@ def set_seed(seed):
     os.environ['PYTHONHASHSEED'] = str(seed)
     return seed
 seed = set_seed(seed = dotargs.seed)
-debug_mode = False
-start_dt = 12
-log.info(f'debug_mode:{debug_mode}')
+log.info(f'setting args is :{dotargs}')
 
 # 載入資料和模型
-官方指認欄位 = ['2','6','10','12','13','15','18','19','21','22','25','26','36','37','39','48']
-nbrs = joblib.load('../model/nbrs.pkl')
-X_pca = joblib.load('../model/X_pca_for_knn.pkl')
-df_groupby_chid_preprocessed = pd.read_feather('../data/df_groupby_chid_preprocessed.feather')
-df = pd.read_feather('../data/2021玉山人工智慧公開挑戰賽冬季賽訓練資料集.feather')
-df = df.loc[df.dt >= start_dt] # 取近期資料(太久的資料可能參考價值不高)
-test_data = pd.read_feather('../data/需預測的顧客名單及提交檔案範例.feather')
+官方指認欄位 = ['2','6','10','12','13','15','18','19','21','22','25','26','36','37','39','48'] #官方只認這些
+nbrs = joblib.load('../model/nbrs.pkl') # knn模型
+X_pca = joblib.load('../model/X_pca_for_knn.pkl') #PCA過後的特徵
+df_groupby_chid_preprocessed = pd.read_feather('../data/df_groupby_chid_preprocessed.feather')#groupby_chid版本的訓練資料
+df = pd.read_feather('../data/2021玉山人工智慧公開挑戰賽冬季賽訓練資料集.feather')#訓練資料
+df = df.loc[df.dt >= dotargs.start_dt] # 取近期資料(太久的資料可能參考價值不高)
+test_data = pd.read_feather('../data/需預測的顧客名單及提交檔案範例.feather')#用來製作submit的資料
+if debug_mode == True:
+    submit = test_data.copy().sample(42) # debug用少數樣本測試就好
+if debug_mode == False:
+    submit = test_data.copy() # 認真模式用全部
 
 # 因為要平行化所以切分資料成四份"1.exia 2.dynames 3.kyrios 4.virtue"
 sp1,sp2,sp3 = int(len(test_data)/4),int(len(test_data)/4)*2,int(len(test_data)/4)*3
@@ -70,85 +74,50 @@ else:
 log.info(f'args.name:{args.name}')
 
 # 一些函數都放在這裡
-def chid2answer(chid,method='value_counts'):
-    if method in ['sum','mean','median']:
-        a = df.loc[df.chid==chid,['shop_tag','txn_amt']].groupby('shop_tag').agg(method).sort_values(by='txn_amt',ascending=False)
-    elif method in ['value_counts']:
-        a = df.loc[df.chid==chid,'shop_tag'].value_counts().to_frame()
-    else:
-        raise 'error'
+def check_answer(answer,n_class=3):
+    assert type(answer) == type([]) #記得確認是list型別
+    assert len(np.unique(answer)) == n_class #確認三個shop_tag不重複
+    return answer #返回答案[top1,top2,top3]
+
+def get_answer(chid_list):
+    a = df.loc[df.chid.isin(chid_list),'shop_tag'].value_counts().to_frame() # 根據chid_list計算value_counts
     a['在指認欄位'] = False
-    a.loc[list(set(a.index)&set(官方指認欄位)),'在指認欄位'] = True #有交集的部份做個記號
-    answer = a[a['在指認欄位']==True].head(3)
-    if len(answer) != 0:
-        return answer.index.tolist()
+    a.loc[list(set(a.index)&set(官方指認欄位)),'在指認欄位'] = True # 與官方認證的16個欄位取交集
+    answer = a[a['在指認欄位']==True].head(3) # 取前三名
+    if len(answer) != 0: # 如果答案不為空列表
+        return answer.index.tolist() #返回list
     else:
-        return []
+        return [] #返回list
 
-def predict_function_distance_first(chid):
-    answer = chid2answer(chid) # 根據這個chid找答案但是不一定可以找到3個
-    if len(answer) == 3:
-        return answer
-    else: # 若找不到三個
-        idx = df_groupby_chid_preprocessed.loc[df_groupby_chid_preprocessed.chid==chid].index[0] #根據chid取得idx 
-        distances, indices = nbrs.kneighbors(X_pca[[idx]]) # 根據idx取得PCA特徵
-        chid_list = df_groupby_chid_preprocessed.loc[indices[0][-(nbrs.n_neighbors-1):]]['chid'].values.tolist() # 根據PCA特徵找到鄰居
-        for nb_chid in chid_list[:dotargs.knn_k]: #對K個鄰居做遍歷
-            nb_answer = chid2answer(nb_chid) # 鄰居的答案
-            answer.extend(list(filter(lambda a: a not in answer, nb_answer))) #用鄰居答案對answer做擴充
-            if len(answer) >= 3: # 如果補齊三個 return
-                return answer[:3]
-        remain = 3-len(answer) # 否則算還缺多少
-        for _ in range(remain):
-            answer.append(np.random.choice(list(set(官方指認欄位)-set(answer))))# 從官方指認欄位隨便補
-        return answer
+def get_k_chids(chid,k):
+    idx = df_groupby_chid_preprocessed.loc[df_groupby_chid_preprocessed.chid==chid].index[0] #根據chid取得樣本的idx
+    distances, indices = nbrs.kneighbors(X_pca[[idx]]) # 根據樣本的idx取得PCA特徵,和鄰居的indices
+    chid_list = df_groupby_chid_preprocessed.loc[indices[0]]['chid'].values.tolist() # 根據鄰居的indices找到鄰居的chid
+    return chid_list[:k] #只選擇最近的k個鄰居
 
-def predict_function_most_common(chid): # 預測函數
-    answer = chid2answer(chid) # 根據這個chid做預測
-    if len(answer) == 3: # 如果成功找到三個直接return
-        assert type(answer) == type([]) #記得確認是list型別
-        assert len(np.unique(answer)) == 3 #確認三個shop_tag不重複
-        return answer 
-    else:
-        remain = 3-len(answer) # 否則計算離三個答案還缺多少
-        idx = df_groupby_chid_preprocessed.loc[df_groupby_chid_preprocessed.chid==chid].index[0] # 根據chid找到該筆樣本的"idx"
-        distances, indices = nbrs.kneighbors(X_pca[[idx]]) # 根據該樣本的"idx"找到該筆樣本的"PCA特徵"進而取得"鄰居的indices"(其中距離近的indices自動排前面)
-        chid_list = df_groupby_chid_preprocessed.loc[indices[0][-(nbrs.n_neighbors-1):]]['chid'].values.tolist() # 根據"鄰居的indices"取得"chid_list(鄰居們)"
-        chid_list = chid_list[:dotargs.knn_k]
-        answer_list = [chid2answer(chid) for chid in chid_list] # 根據"chid_list"取得"answer_list"
-        answer_list = list(itertools.chain(*answer_list)) # 將answer_list做"一維展開"
-        answer_list = list(filter(lambda a: a not in answer, answer_list)) # 如果該shop_tag在"answer"裡面已經有了則從answer_list"去除"
-        for _ in range(remain): # 遍歷剩餘數量做補上的動作,直到補滿3個答案
-            if len(answer_list) != 0: #如果answer_list不等於0
-                shop_tag = Counter(answer_list).most_common()[0][0] # 從answer_list選most_common的shop_tag(出現頻率比較多可能是正確答案)
-                answer.append(shop_tag) # 加入該shop_tag至answer
-                answer_list = list(filter(lambda a: a not in answer, answer_list)) # 記得把answer有的shop_tag從answer_list做刪除
-            else: #如果answer_list等於0
-                answer_list = 官方指認欄位 # 既然answer_list等於0估解將官方指認欄位當作answer_list
-                shop_tag = np.random.choice(list(set(answer_list)-set(answer))) # 隨機選但是answer裡面已經有的就不要選,官方規定的
-                answer.append(shop_tag) # 加入shop_tag至answer
-                answer_list = list(filter(lambda a: a not in answer, answer_list)) # 記得把answer有的shop_tag從answer_list做刪除
-        assert type(answer) == type([]) #確認是list型別
-        assert len(np.unique(answer)) == 3 #確認三個shop_tag不重複
-        return answer # 返回答案(類型list)
+def chid2answer(chid_list,k=2,max_k=dotargs.knn_k):
+    if k >= max_k:# 如果達到max_k隨便選三個shop_tag然後return(max_k設定愈高,觸發機率愈低)
+        answer = [] # 初始化空的 answer list
+        for _ in range(3): # 補滿 top1 top2 top3
+            answer.append(np.random.choice(list(set(官方指認欄位)-set(answer))))# 從官方指認欄位隨便補(三個不能重複)
+        return check_answer(answer) # 返回前檢查
+    else: # 否則根據chid_list去猜shop_tag
+        answer = get_answer(chid_list)
+        if len(answer) == 3:# 如果湊齊三個答案直接return
+            return check_answer(answer)# 返回前檢查
+        else: # 如果湊不齊則用chid_list[0]去找k個鄰居再遞迴運算
+            chid_list = get_k_chids(chid_list[0],k) #k初始值是2,等於找自己跟一個鄰居
+            return chid2answer(chid_list,k=k+1)
 
-if debug_mode == True:
-    submit = test_data.copy().head(42) # debug用少數樣本測試就好
-if debug_mode == False:
-    submit = test_data.copy() # 認真模式用全部
-
-if dotargs.predict_method == 'most_common':
-    predict_function = predict_function_most_common
-if dotargs.predict_method == 'distance_first':
-    predict_function = predict_function_distance_first
-
+# 開始執行預測
 log.info('start predict...')
-answer_list = submit['chid'].progress_apply(predict_function)
-answer_list = answer_list.to_frame()['chid']
+answer_list = submit['chid'].progress_apply(lambda chid:chid2answer([chid])).to_frame()['chid']
+# 用預測完的answer_list對submit的top1,top2,top3做補上的動作
 for i in [0,1,2]:
     submit[f'top{i+1}'] = answer_list.apply(lambda x:x[i]).values
+# 保存
 save_path = f'submit_most_count_method_knn_{args.name}_{str(int(time.time()))}.csv' #保存路徑
-submit.to_csv(save_path,index=False) #保存檔案
+submit.to_csv(save_path,index=False) # 執行保存檔案的動作
 log.info(f'submission.shape:{submit.shape}')
 log.info(f'submission.path:{save_path}')
 log.info('ALL DONE!')
