@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 coloredlogs.install(level='INFO')
 
 # 是否啟用debug模式
-debug_mode = False
+debug_mode = True
 log.info(f'debug_mode:{debug_mode}')
 
 # 超參數設定
@@ -89,9 +89,10 @@ def get_k_chids(chid,k):
     idx = df_groupby_chid_preprocessed.loc[df_groupby_chid_preprocessed.chid==chid].index[0] #根據chid取得樣本的idx
     distances, indices = nbrs.kneighbors(X_pca[[idx]]) # 根據樣本的idx取得PCA特徵,和鄰居的indices
     chid_list = df_groupby_chid_preprocessed.loc[indices[0]]['chid'].values.tolist() # 根據鄰居的indices找到鄰居的chid
+    chid_list = chid_list[1:] #(不含自己[1:])
     return chid_list[:k] #只選擇最近的k個鄰居
 
-def chid2answer(chid_list,k=2,max_k=dotargs.knn_k):
+def chid2answer(chid_list,k=1,max_k=dotargs.knn_k):
     if k >= max_k:# 如果達到max_k隨便選三個shop_tag然後return(max_k設定愈高,觸發機率愈低)
         answer = [] # 初始化空的 answer list
         for _ in range(3): # 補滿 top1 top2 top3
@@ -102,12 +103,18 @@ def chid2answer(chid_list,k=2,max_k=dotargs.knn_k):
         if len(answer) == 3:# 如果湊齊三個答案直接return
             return check_answer(answer)# 返回前檢查
         else: # 如果湊不齊則用chid_list[0]去找k個鄰居再遞迴運算
-            chid_list = get_k_chids(chid_list[0],k) #k初始值是2,等於找自己跟一個鄰居
-            return chid2answer(chid_list,k=k+1)
+            my_answer = answer # 我的答案
+            my_chid = chid_list[0] #我的chid
+            nb_chid = get_k_chids(my_chid,k) #根據我的chid找k個鄰居
+            nb_answer = chid2answer(nb_chid,k=k+1) # 鄰居的答案
+            nb_answer = list(filter(lambda a: a not in my_answer, nb_answer)) # 過濾nb_answer(不能跟my_answer重複)
+            final_answer = my_answer + nb_answer # 我的答案擴充鄰居的答案 = 最終答案
+            final_answer = final_answer[:3] # 取前三 
+            return final_answer
 
 # 開始執行預測
 if debug_mode == True:
-    submit = test_data.copy().sample(42) # debug用少數樣本測試就好
+    submit = test_data.copy().sample(420) # debug用少數樣本測試就好
 if debug_mode == False:
     submit = test_data.copy() # 認真模式用全部
 log.info('start predict...')
