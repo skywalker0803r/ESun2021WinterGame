@@ -21,7 +21,7 @@ class dotdict(dict):
 
 # LB分數0.6902的參數
 args = dotdict({
-    'pca_n':65,
+    'pca_n':0.95,
     'knn_k':100,
     'knn_leaf_size':300,
     'knn_p':2,

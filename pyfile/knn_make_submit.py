@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 coloredlogs.install(level='INFO')
 
 # 是否啟用debug模式
-debug_mode = True
+debug_mode = False
 log.info(f'debug_mode:{debug_mode}')
 
 # 超參數設定
